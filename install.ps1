@@ -35,6 +35,7 @@ $dll = Join-Path $GameDir "TEXT\ENU.DLL"
 $bak = "$dll.orig"
 if (-not (Test-Path $dll)) { throw "ENU.DLL not found: $dll" }
 Write-Host "Game: $GameDir"
+if (Get-Process -Name RoadRash95 -ErrorAction SilentlyContinue) { throw "Road Rash is running. Please close the game first. / 游戏正在运行,请先关闭游戏再安装。" }
 
 if ($Restore) {
     if (-not (Test-Path $bak)) { throw "No backup (ENU.DLL.orig) found. Use Steam > Verify integrity of game files. / 没有备份,请用 Steam 验证游戏文件完整性。" }
