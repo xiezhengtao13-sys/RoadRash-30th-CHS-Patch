@@ -1,8 +1,14 @@
-﻿[English](README.md) | **简体中文**
+[English](README.md) | **简体中文**
 
 # 《暴力摩托:30周年纪念版》简体中文补丁
 
 非官方、爱好者制作的简体中文汉化,适用于 Steam 版 **Road Rash™: 30th Anniversary Edition**(AppID 2448570)。
+
+## 实机截图预览
+
+| 游戏模式界面 | 洗手间（设置与点唱机）界面 |
+| :---: | :---: |
+| ![游戏模式](screenshots/mode_select.jpg) | ![洗手间](screenshots/restroom_menu.jpg) |
 
 ## 汉化内容
 - 菜单、功能说明、车行、车型介绍、比赛结果与提示、按键设置、联机/拨号提示、系统报错、制作名单,共 **1022 条**文本。

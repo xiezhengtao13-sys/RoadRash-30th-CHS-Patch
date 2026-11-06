@@ -1,8 +1,14 @@
-﻿**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md)
 
 # Road Rash: 30th Anniversary Edition — Simplified Chinese Patch
 
 Unofficial fan translation (Simplified Chinese) for the Steam release of **Road Rash™: 30th Anniversary Edition** (AppID 2448570).
+
+## In-Game Screenshots
+
+| Game Mode | Restroom (Options & Jukebox) |
+| :---: | :---: |
+| ![Game Mode](screenshots/mode_select.jpg) | ![Restroom](screenshots/restroom_menu.jpg) |
 
 ## What is translated
 - Menus, option descriptions, bike shop, bike descriptions, race results and prompts, key bindings, network/dial-up messages, system errors and credits — **1022 strings**.
