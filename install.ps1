@@ -8,53 +8,85 @@ param([string]$GameDir = "", [switch]$Restore, [switch]$Force)
 $ErrorActionPreference = "Stop"
 $KnownHash = "2309D5B30560103C7A8B3B97E626877FB89FD85164F82186082DC1C665466E70"
 
+function Safe-TestPath([string]$p) {
+    if ([string]::IsNullOrWhiteSpace($p)) { return $false }
+    try { return [System.IO.File]::Exists($p) -or [System.IO.Directory]::Exists($p) } catch { return $false }
+}
+
 function Find-GameDir {
+    # 1. Check current script dir and its parent directories first (in case user extracted inside RoadRash folder)
+    $cur = $PSScriptRoot
+    for ($i = 0; $i -lt 4 -and $cur; $i++) {
+        $candDll = [System.IO.Path]::Combine($cur, "TEXT", "ENU.DLL")
+        if (Safe-TestPath $candDll) { return $cur }
+        $parent = [System.IO.Path]::GetDirectoryName($cur)
+        if ($parent -eq $cur) { break }
+        $cur = $parent
+    }
+
+    # 2. Check Steam registry and libraryfolders.vdf (ignoring disconnected drives like G:)
     $libs = @()
-    foreach ($k in @("HKCU:\Software\Valve\Steam", "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam")) {
+    foreach ($k in @("HKCU:\Software\Valve\Steam", "HKLM:\SOFTWARE\WOW6432Node\Valve\Steam", "HKLM:\SOFTWARE\Valve\Steam")) {
         try {
             $v = (Get-ItemProperty $k -ErrorAction Stop)
-            foreach ($n in @("SteamPath", "InstallPath")) { if ($v.$n) { $libs += ($v.$n -replace '/', '\') } }
+            foreach ($n in @("SteamPath", "InstallPath")) {
+                if ($v.$n) { $libs += ($v.$n -replace '/', '\').TrimEnd('\') }
+            }
         } catch {}
     }
     foreach ($l in @($libs)) {
-        $vdf = Join-Path $l "steamapps\libraryfolders.vdf"
-        if (Test-Path $vdf) {
-            foreach ($m in [regex]::Matches((Get-Content $vdf -Raw), '"path"\s+"([^"]+)"')) { $libs += ($m.Groups[1].Value -replace '\\\\', '\') }
-        }
+        try {
+            $vdf = [System.IO.Path]::Combine($l, "steamapps", "libraryfolders.vdf")
+            if (Safe-TestPath $vdf) {
+                $raw = [System.IO.File]::ReadAllText($vdf)
+                foreach ($m in [regex]::Matches($raw, '"path"\s+"([^"]+)"')) {
+                    $libs += ($m.Groups[1].Value -replace '\\\\', '\' -replace '/', '\').TrimEnd('\')
+                }
+            }
+        } catch {}
     }
     foreach ($l in ($libs | Select-Object -Unique)) {
-        $c = Join-Path $l "steamapps\common\RoadRash"
-        if (Test-Path (Join-Path $c "TEXT\ENU.DLL")) { return $c }
+        try {
+            $c = [System.IO.Path]::Combine($l, "steamapps", "common", "RoadRash")
+            $dll = [System.IO.Path]::Combine($c, "TEXT", "ENU.DLL")
+            if (Safe-TestPath $dll) { return $c }
+        } catch {}
     }
     return $null
 }
 
 if (-not $GameDir) { $GameDir = Find-GameDir }
-if (-not $GameDir) { $GameDir = Read-Host "Game folder not found. Paste the RoadRash folder path / 没找到游戏目录,请粘贴 RoadRash 文件夹路径" }
-$dll = Join-Path $GameDir "TEXT\ENU.DLL"
+while (-not $GameDir -or -not (Safe-TestPath ([System.IO.Path]::Combine($GameDir.Trim('"').Trim(), "TEXT", "ENU.DLL")))) {
+    if ($GameDir) {
+        Write-Host "TEXT\ENU.DLL not found under: $GameDir / 在该路径下未找到 TEXT\ENU.DLL，请检查路径。" -ForegroundColor Yellow
+    }
+    $GameDir = Read-Host "Game folder not found. Paste the RoadRash folder path / 没找到游戏目录,请粘贴 RoadRash 文件夹路径"
+    if ($GameDir) { $GameDir = $GameDir.Trim('"').Trim() }
+}
+$dll = [System.IO.Path]::Combine($GameDir, "TEXT", "ENU.DLL")
 $bak = "$dll.orig"
-if (-not (Test-Path $dll)) { throw "ENU.DLL not found: $dll" }
 Write-Host "Game: $GameDir"
 if (Get-Process -Name RoadRash95 -ErrorAction SilentlyContinue) { throw "Road Rash is running. Please close the game first. / 游戏正在运行,请先关闭游戏再安装。" }
 
 if ($Restore) {
-    if (-not (Test-Path $bak)) { throw "No backup (ENU.DLL.orig) found. Use Steam > Verify integrity of game files. / 没有备份,请用 Steam 验证游戏文件完整性。" }
-    Copy-Item $bak $dll -Force
+    if (-not (Safe-TestPath $bak)) { throw "No backup (ENU.DLL.orig) found. Use Steam > Verify integrity of game files. / 没有备份,请用 Steam 验证游戏文件完整性。" }
+    Copy-Item -LiteralPath $bak -Destination $dll -Force
     Write-Host "Restored English. / 已恢复英文原版。" -ForegroundColor Green
     return
 }
 
-if (-not (Test-Path $bak)) {
-    $h = (Get-FileHash $dll -Algorithm SHA256).Hash
+if (-not (Safe-TestPath $bak)) {
+    $h = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash
     if ($h -ne $KnownHash -and -not $Force) {
-        throw "ENU.DLL is not the expected original (hash mismatch). Game version may differ. Use -Force to continue. / ENU.DLL 与预期原版不一致,可能是游戏版本不同或已被改过,加 -Force 强制继续。"
+        Write-Host "Warning: ENU.DLL hash ($h) differs from tested build, continuing anyway... / 提示: ENU.DLL 哈希与测试版本不同，继续尝试安装..." -ForegroundColor Yellow
     }
-    Copy-Item $dll $bak
+    Copy-Item -LiteralPath $dll -Destination $bak
     Write-Host "Backup created: $bak"
 }
 
 $tr = New-Object "System.Collections.Generic.Dictionary[int,string]"
-$json = Get-Content (Join-Path $PSScriptRoot "translations.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$jsonPath = [System.IO.Path]::Combine($PSScriptRoot, "translations.json")
+$json = [System.IO.File]::ReadAllText($jsonPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 foreach ($pr in $json.PSObject.Properties) { $tr[[int]$pr.Name] = [string]$pr.Value }
 
 Add-Type -TypeDefinition @"
@@ -100,9 +132,9 @@ public static class RRPatch {
 }
 "@
 
-$tmp = Join-Path $env:TEMP "RoadRash_CHS_ENU.DLL"
+$tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "RoadRash_CHS_ENU.DLL")
 $n = [RRPatch]::Apply($bak, $tmp, $tr)
-Copy-Item $tmp $dll -Force
-Remove-Item $tmp -Force
+Copy-Item -LiteralPath $tmp -Destination $dll -Force
+Remove-Item -LiteralPath $tmp -Force
 Write-Host "Done. Patched $n string blocks, $($tr.Count) strings. / 完成:已汉化 $($tr.Count) 条文本。" -ForegroundColor Green
 Write-Host "Note: Steam 'Verify integrity' or a game update will revert it; just run this again. / Steam 验证或更新会还原,重新运行本脚本即可。"
